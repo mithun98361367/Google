@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Persistent Device ID Example</title>
+</head>
+<body>
+  <h3>Persistent Device ID demo</h3>
+  <pre id="output"></pre>
+
+<script>
+// Utility: cookie set/get
+function setCookie(name, value, days) {
+  var expires = "";
+  if (days) {
+    var date = new Date();
+    date.setTime(date.getTime() + (days*24*60*60*1000));
+    expires = "; expires=" + date.toUTCString();
+  }
+  document.cookie = name + "=" + (value || "")  + expires + "; path=/; SameSite=Lax";
+}
+function getCookie(name) {
+  var nameEQ = name + "=";
+  var ca = document.cookie.split(';');
+  for(var i=0;i<ca.length;i++){
+    var c = ca[i];
+    while (c.charAt(0)==' ') c = c.substring(1,c.length);
+    if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+  }
+  return null;
+}
+
+// UUID fallback if crypto.randomUUID not supported
+function uuidv4Fallback() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+}
+
+// get or create persistent ID
+async function getOrCreateDeviceId() {
+  let id = localStorage.getItem('device_id');
+  if (!id) {
+    id = getCookie('device_id'); // fallback: cookie
+    if (!id) {
+      // create new
+      id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : uuidv4Fallback();
+    }
+    // persist to localStorage and cookie
+    try { localStorage.setItem('device_id', id); } catch(e) { /* storage blocked */ }
+    setCookie('device_id', id, 3650); // cookie for ~10 years
+  }
+  return id;
+}
+
+// gather client info
+async function gatherClientInfo() {
+  const id = await getOrCreateDeviceId();
+  const info = {
+    deviceId: id,
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    language: navigator.language,
+    screenWidth: screen.width,
+    screenHeight: screen.height,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+    timestamp: (new Date()).toISOString()
+  };
+
+  // optionally fetch public IP (uses a public service). If you don't want this, remove this block.
+  try {
+    const r = await fetch('https://api.ipify.org?format=json'); // public endpoint
+    if (r.ok) {
+      const j = await r.json();
+      info.ip = j.ip;
+    }
+  } catch(err) {
+    info.ip = null;
+  }
+
+  return info;
+}
+
+// send to Apps Script backend
+async function sendToServer(info) {
+  try {
+    // Replace with your deployed Apps Script web app URL
+    const GAS_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL';
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(info)
+    });
+    const text = await res.text();
+    return { ok: true, text };
+  } catch (err) {
+    return { ok: false, error: err.toString() };
+  }
+}
+
+(async function(){
+  const out = document.getElementById('output');
+  const info = await gatherClientInfo();
+  out.textContent = 'Collected info:\n' + JSON.stringify(info, null, 2) + '\n\nSending to server...';
+  const sent = await sendToServer(info);
+  out.textContent += '\n\nServer response:\n' + JSON.stringify(sent, null, 2);
+})();
+</script>
+</body>
+</html>
