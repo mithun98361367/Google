@@ -111,7 +111,7 @@
       async function ClockIn() {
         var gps = await getlocation();
         var employee = document.getElementById("teacherId").value;
-        var systemid = localStorage.getItem("device_id");
+        var systemid = document.getElementById("Device_ID").value;
         if (employee != '') {
           $('#message').html("<span class='spinner-border spinner-border-sm text-primary'></span> Please wait...!");
           google.script.run.withSuccessHandler(function(ar) {
